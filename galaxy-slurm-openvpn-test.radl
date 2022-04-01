@@ -1,0 +1,191 @@
+description galaxy-slurm-openvpn-test (
+    kind = 'component' and
+    short = 'Testing of EC3 deployment of Galaxy + Slurm + OpenVPN .' and
+    content = 'Testing of EC3 deployment of Galaxy + Slurm + OpenVPN .'
+
+)
+
+
+network public (
+  outbound = 'yes' and
+  # OpenVPN port
+  outports contains '1194/udp' and
+  # Galaxy https port
+  outports contains '8443/tcp' and
+  # Im XMLRPC port
+  outports contains '8800/tcp' 
+)
+
+network private (
+  # OpenVPN port
+  outports contains '1194/udp'
+)
+
+
+system front (
+  # Net interfaces definition. Order matters !
+  net_interface.0.connection = 'private' and
+  net_interface.0.dns_name = 'slurmserver' and
+  net_interface.1.connection = 'public' and
+  net_interface.1.dns_name = 'slurmserverpublic' and
+  # Info needed for the slurm recipe
+  queue_system = 'slurm' and
+  ec3_templates contains 'slurm' and
+  ec3_templates contains 'openvpn' and
+  # Install ansible roles needed
+  disk.0.applications contains (name = 'ansible.modules.grycap.openvpn') and
+  disk.0.applications contains (name = 'ansible.modules.grycap.slurm') and
+  disk.0.applications contains (name = 'ansible.modules.grycap.clues') and
+  disk.0.applications contains (name = 'ansible.modules.grycap.im') and
+  disk.0.applications contains (name = 'ansible.modules.grycap.galaxy') and
+  disk.0.applications contains (name = 'ansible.modules.grycap.nfs') and
+
+  cpu.count>=4 and
+  memory.size>=8g and
+
+  disk.0.image.url = 'appdb://IISAS-FedCloud/egi.ubuntu.20.04?eosc-synergy.eu'
+
+)
+
+configure front (
+@begin
+---
+  - ec3_prio: -10
+    vars:
+      FRONTEND:
+        ec3_xpath: /system/front/net_interface.0.dns_name
+
+    pre_tasks:
+    - name: Install firewalld in Debian systems
+      apt: pkg=firewalld  
+      when: ansible_os_family == "Debian"
+
+    - name: Start firewalld
+      service: name=firewalld state=started enabled=yes
+
+    tasks:
+    - name: Enable VPN subnet in firewalld
+      firewalld:
+        source: 10.8.0.0/24
+        zone: trusted
+        permanent: true
+        state: enabled
+        immediate: true
+
+    roles:
+    - { role: 'grycap.openvpn', openvpn_type_of_node: "front", openvpn_frontname: '{{FRONTEND}}'}
+
+  - vars:
+    # Variables needed for CLUES
+      AUTH:
+        ec3_xpath: /system/front/auth
+    # Variables needed for SLURM
+      TEMPLATES:
+        ec3_jpath: /system/front/ec3_templates
+      SYSTEMS:
+          ec3_jpath: /system/*
+      NNODES: '{{ SYSTEMS | selectattr("ec3_max_instances_max", "defined") | sum(attribute="ec3_max_instances_max") }}'
+    # Variables needed for Galaxy
+      QUEUE_SYSTEM:
+        ec3_xpath: /system/front/queue_system
+
+    roles:
+    # The install order matters !
+    # If the role order is altered the installation won't work
+    - { role: 'grycap.im' }
+    - role: 'grycap.nfs'
+      nfs_mode: 'front'
+      nfs_exports: [{path: "/home",
+                     export: "wn*.localdomain(rw,async,no_root_squash,no_subtree_check,insecure)"}]
+      when: QUEUE_SYSTEM != 'local'
+
+    - { role: 'grycap.slurm', max_number_of_nodes: '{{NNODES}}',
+                              slurm_type_of_node: 'front',
+                              slurm_wn_nodenames: '{{ groups["wn"]|map("extract", hostvars, "ansible_hostname")|list if "wn" in groups else [] }}',
+                              templates: '{{TEMPLATES}}' }
+
+    - { role: 'grycap.clues', auth: '{{AUTH}}',
+                              clues_queue_system: 'slurm',
+                              max_number_of_nodes: '{{NNODES}}',
+                              vnode_prefix: 'wn' }
+
+    - role: grycap.galaxy
+      galaxy_slurm_server_name: '{{ hostvars[groups["front"][0]]["IM_NODE_PRIVATE_IP"] }}'
+      galaxy_lrms: "{{ QUEUE_SYSTEM }}"
+      slurm_galaxy_docker_env_vars:
+          NONUSE: "reports,slurmctld,nodejs,condor,slurmd"
+          GALAXY_CONFIG_JOB_CONFIG_FILE: "/export/slurm_job_conf.xml"
+          GALAXY_DESTINATIONS_DEFAULT: "slurm_cluster"
+
+      galaxy_export_dir: '/home/export'
+
+@end
+)
+
+system wn (
+  ec3_templates contains 'openvpn' and
+  ec3_templates contains 'nfs' and
+  ec3_max_instances = 1 and
+
+  cpu.count>=2 and
+  memory.size>=4g and
+  
+  net_interface.0.connection='private' and
+ 
+  disk.0.image.url = 'appdb://IISAS-FedCloud/egi.ubuntu.20.04?eosc-synergy.eu'
+
+)
+
+configure wn (
+@begin
+---
+
+  - ec3_prio: -10
+    vars:
+      FRONTEND:
+        ec3_xpath: /system/front/net_interface.0.dns_name
+
+    pre_tasks:
+    - name: Install firewalld in Debian systems
+      apt: pkg=firewalld
+      when: ansible_os_family == "Debian"
+
+    - name: Start firewalld
+      service: name=firewalld state=started enabled=yes
+
+    - name: Enable VPN subnet in firewalld
+      firewalld:
+        source: 10.8.0.1/32
+        zone: trusted
+        permanent: true
+        state: enabled
+        immediate: true
+
+    roles:
+    - { role: 'grycap.openvpn', openvpn_type_of_node: "wn", openvpn_frontname: '{{FRONTEND}}', openvpn_front_ip: '{{ hostvars[groups["front"][0]]["IM_NODE_PRIVATE_IP"] }}'}
+
+   # This step must be performed before the configuration of the LRMS (-5 prio)
+  - ec3_prio: -7
+    vars:
+      FRONTEND:
+        ec3_xpath: /system/front/net_interface.0.dns_name
+    roles:
+      - { role: 'grycap.nfs', nfs_mode: 'wn',
+                              nfs_client_imports: [{ local: "/home",
+                              remote: "/home",
+                              server_host: '{{ FRONTEND }}' }] }
+      - { role: grycap.galaxy, galaxy_node_type: wn, galaxy_export_dir: '/home/export'  }
+
+  - roles:
+    - { role: 'grycap.slurm', slurm_type_of_node: 'wn'}
+
+@end
+)
+
+include mswss_misc (
+  template = 'openports'
+)
+
+deploy front 1
+
+
