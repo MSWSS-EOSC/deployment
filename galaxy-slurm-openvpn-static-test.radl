@@ -1,0 +1,213 @@
+system front (
+  net_interface.0.connection = 'private' and
+  net_interface.0.dns_name = 'slurmserver' and
+  net_interface.1.connection = 'public' and
+  net_interface.1.dns_name = 'slurmserverpublic' and
+  queue_system = 'slurm' and
+  disk.0.applications contains (
+    name = 'ansible.modules.grycap.openvpn'
+  ) and
+  disk.0.applications contains (
+    name = 'ansible.modules.grycap.slurm'
+  ) and
+  disk.0.applications contains (
+    name = 'ansible.modules.grycap.galaxy'
+  ) and
+  disk.0.applications contains (
+    name = 'ansible.modules.grycap.nfs'
+  ) and
+  cpu.count >= 4 and
+  memory.size >= 8g and
+  disk.0.image.url = 'appdb://IISAS-FedCloud/egi.ubuntu.20.04?mswss.ui.savba.sk'
+)
+
+network public (
+  outbound = 'yes' and
+  outports = '8443/tcp,1194/udp,8800/tcp'
+)
+
+network private (
+  outports = '1194/udp'
+)
+
+configure front (
+@begin
+- pre_tasks:
+  - name: Wait for any possibly running unattended upgrade to finish
+    raw: sudo systemd-run --property="After=apt-daily.service apt-daily-upgrade.service" --wait /bin/true
+  - apt: pkg=firewalld
+    name: Install firewalld in Debian systems
+    when: ansible_os_family == "Debian"
+  - name: Start firewalld
+    service: name=firewalld state=started enabled=yes
+  roles:
+  - openvpn_frontname: '{{FRONTEND}}'
+    openvpn_type_of_node: front
+    role: grycap.openvpn
+  - role: grycap.munge
+  tasks:
+  - firewalld:
+      immediate: true
+      permanent: true
+      source: 10.8.0.0/24
+      state: enabled
+      zone: trusted
+    name: Enable VPN subnet in firewalld
+  vars:
+    FRONTEND: slurmserver
+- tasks:
+  - firewalld:
+      immediate: true
+      permanent: true
+      port: '{{item}}'
+      state: enabled
+    ignore_errors: true
+    with_items: '{{OUTPORTS.split('','')}}'
+  vars:
+    OUTPORTS: 8443/tcp,1194/udp,8800/tcp
+- roles:
+  - nfs_exports:
+    - export: vnode-*.localdomain(rw,async,no_root_squash,no_subtree_check,insecure)
+      path: /home
+    nfs_mode: front
+    role: grycap.nfs
+    when: QUEUE_SYSTEM != 'local'
+  - max_number_of_nodes: '{{NNODES}}'
+    role: grycap.slurm
+    slurm_type_of_node: front
+    slurm_wn_nodenames: '{{ groups["wn"]|map("extract", hostvars, "ansible_hostname")|list if "wn" in groups else [] }}'
+    slurm_vnode_prefix: vnode-
+    templates: '{{TEMPLATES}}'
+  - galaxy_export_dir: /home/export
+    galaxy_lrms: '{{ QUEUE_SYSTEM }}'
+    galaxy_slurm_server_name: '{{ hostvars[groups["front"][0]]["IM_NODE_PRIVATE_IP"]
+      }}'
+    role: grycap.galaxy
+    slurm_galaxy_docker_env_vars:
+      GALAXY_CONFIG_JOB_CONFIG_FILE: /export/slurm_job_conf.xml
+      GALAXY_DESTINATIONS_DEFAULT: slurm_cluster
+      NONUSE: reports,slurmctld,nodejs,condor,slurmd
+  vars:
+    NNODES: 1
+    QUEUE_SYSTEM: slurm
+    SYSTEMS:
+    - class: system
+      cpu.count_max: inf
+      cpu.count_min: 4
+      disk.0.applications:
+      - name: ansible.modules.grycap.openvpn
+      - name: ansible.modules.grycap.slurm
+      - name: ansible.modules.grycap.galaxy
+      - name: ansible.modules.grycap.nfs
+      id: front
+      memory.size_max: inf
+      memory.size_min: 8589934592
+      net_interface.0.connection:
+        class: network
+        id: private
+        reference: true
+      net_interface.0.dns_name: slurmserver
+      net_interface.1.connection:
+        class: network
+        id: public
+        reference: true
+      net_interface.1.dns_name: slurmserverpublic
+      queue_system: slurm
+    - class: network
+      id: private
+      outports:
+      - 1194/udp
+    - class: network
+      id: public
+      outbound: 'yes'
+      outports:
+      - 8443/tcp
+      - 1194/udp
+      - 8800/tcp
+    - class: system
+      cpu.count_max: inf
+      cpu.count_min: 2
+      id: wn
+      memory.size_max: inf
+      memory.size_min: 4294967296
+      net_interface.0.connection:
+        class: network
+        id: private
+        reference: true
+    TEMPLATES:
+    - slurm
+    - openvpn
+
+@end
+)
+
+system wn (
+  net_interface.0.connection = 'private' and
+  disk.0.image.url = 'appdb://IISAS-FedCloud/egi.ubuntu.20.04?mswss.ui.savba.sk' and
+  cpu.count >= 2 and
+  memory.size >= 4g
+)
+
+configure wn (
+@begin
+- pre_tasks:
+  - name: Wait for any possibly running unattended upgrade to finish
+    raw: sudo systemd-run --property="After=apt-daily.service apt-daily-upgrade.service" --wait /bin/true
+  - name: Install firewalld in Debian systems
+    raw: sudo apt install -y firewalld
+    when: ansible_os_family == "Debian"
+  - name: Start firewalld
+    service: name=firewalld state=started enabled=yes
+  - firewalld:
+      immediate: true
+      permanent: true
+      source: 10.8.0.1/32
+      state: enabled
+      zone: trusted
+    name: Enable VPN subnet in firewalld
+  - name: Install OpenVPN
+    raw: sudo apt install -y openvpn
+  roles:
+  - openvpn_front_ip: '{{ hostvars[groups["front"][0]]["IM_NODE_PRIVATE_IP"] }}'
+    openvpn_frontname: '{{FRONTEND}}'
+    openvpn_type_of_node: wn
+    role: grycap.openvpn
+  vars:
+    FRONTEND: slurmserver
+- tasks:
+  - firewalld:
+      immediate: true
+      permanent: true
+      port: '{{item}}'
+      state: enabled
+    ignore_errors: true
+    with_items: '{{OUTPORTS.split('','')}}'
+  vars:
+    OUTPORTS: 8443/tcp,1194/udp,8800/tcp
+- roles:
+  - nfs_client_imports:
+    - local: /home
+      remote: /home
+      server_host: '{{ FRONTEND }}'
+    nfs_mode: wn
+    role: grycap.nfs
+  - galaxy_export_dir: /home/export
+    galaxy_node_type: wn
+    role: grycap.galaxy
+  vars:
+    FRONTEND: slurmserver
+- roles:
+  - role: grycap.slurm
+    slurm_type_of_node: wn
+
+
+@end
+)
+
+contextualize (
+   system front configure front step 1
+   system wn configure wn step 2
+)
+
+deploy front 1
+deploy wn 1
