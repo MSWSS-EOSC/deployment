@@ -1,7 +1,7 @@
-description galaxy-slurm-openvpn-test (
+description mswss-infrastructure-dynamic (
     kind = 'component' and
-    short = 'Testing of EC3 deployment of Galaxy + Slurm + OpenVPN .' and
-    content = 'Testing of EC3 deployment of Galaxy + Slurm + OpenVPN .'
+    short = 'Template for deployment of dynamic infrastructure for MSWSS service using EC3.' and
+    content = 'Deployment of dynamic infrastructure for MSWSS service using EC3.'
 
 )
 
