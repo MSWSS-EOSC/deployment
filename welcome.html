@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <link rel="stylesheet" href="/static/style/base.css" type="text/css" />
+    <style>
+        h2 {text-align: center;}
+    </style>
+</head>
+<body style="margin: 2em;">
+<h2>Modelling Service for Water Supply Systems</h2>
+<p>
+   MSWSS is a service for modeling and analysis of Water Supply Systems which will integrate the analysis of toxics in drinking-water supply networks with water distribution network simulation. MSWSS service will allow water infrastructure operators and researchers to analyse hazardous events (e.g. toxics propagation within a pipe system) and may be used for preparation of risk management plans for water utilities. The EOSC computing infrastructure and data sharing services enable modelling of more complex water supply systems and increase the number of scenarios for the analysis. 
+</p>
+
+<center>
+<img class="img-fluid" alt="Modeling Service for Water Supply Systems: architecture" src="welcome_mswss.png" style="width: 70vw;">
+</center>
+<p></p>
+
+<p>
+MSWSS service uses computational backend based on the EC3 elastic virtual cluster service which builds and manages an elastic virtual cluster on the computational resources available in the EOSC Cloud IaaS infrastructure. The resources in the virtual cluster are managed by the Slurm workload management system. The data produced by computational jobs are stored locally within the MSWSS service and are available to users via Galaxy portal.
+</p>
+
+<p></p>
+<p>MSWSS thematic service includes the following services listed in the EOSC marketplace:</p>
+
+<ul><li>EC3 (Infrastructure Manager, CLUES): is used for creation and management of computational backend based on elastic virtual cluster built from virtual worker nodes</li><li>EOSC Cloud computing resources: are used to build the elastic virtual cluster for MSWSS service</li><li>EGI Check-in: it is used by EC3 to authenticate the MSWSS service to EOSC Cloud computing resources</li></ul>
+
+</body>
+</html>

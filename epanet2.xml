@@ -1,0 +1,26 @@
+<tool id="epanet2" name="EPANET 2" version="0.1.0">
+  <description>simulation</description>
+  <command>${__tool_directory__}/epanet2 '$input' '$rpt_file' '$bin_file'</command>
+  <inputs>
+    <param format="txt" name="input" type="data" label="Input file"/>
+  </inputs>
+  <outputs>
+	  <data format="txt" name="rpt_file" label="${tool.name} on ${on_string}: Report file" />
+	  <data format="binary" name="bin_file" label="${tool.name} on ${on_string}: Binary output" />
+  </outputs>
+
+  <tests>
+    <test>
+      <param name="input" value="input_file.txt"/>
+      <output name="report" file="report.txt"/>
+      <output name="bin_output" file="output.bin"/>
+
+    </test>
+  </tests>
+
+  <help>
+	  This tool runs EPANET 2 simulation.
+  </help>
+
+</tool>
+

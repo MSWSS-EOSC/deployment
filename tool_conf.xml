@@ -1,0 +1,11 @@
+<?xml version='1.0' encoding='utf-8'?>
+<toolbox tool_path="/export/galaxy-central/tools_mswss" monitor="true">
+	<tool file="epanet2/epanet2.xml" />
+	<tool file="viz/viz.xml" />
+	<tool file="data_source/upload.xml" />
+	<section id="dataverse" name="Dataverse repository">
+                  <tool file="dataverse/dataverse_upload.xml" />
+                  <tool file="dataverse/dataverse_download.xml" />
+        </section>
+</toolbox>
+
